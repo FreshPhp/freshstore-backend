@@ -1,0 +1,128 @@
+{
+  "design_system": {
+    "theme": "dark",
+    "typography": {
+      "headings": {
+        "font_family": "Unbounded, sans-serif",
+        "weights": ["400", "700", "900"],
+        "usage": "Use for all section titles, hero text, and product names. Tight tracking (-0.02em) for large text."
+      },
+      "body": {
+        "font_family": "Manrope, sans-serif",
+        "weights": ["400", "500", "600"],
+        "usage": "Use for descriptions, pricing, and UI elements. High legibility."
+      }
+    },
+    "colors": {
+      "palette": {
+        "background": "#050505",
+        "foreground": "#ffffff",
+        "card": "#0a0a0a",
+        "card_foreground": "#ffffff",
+        "primary": "#7c3aed",
+        "primary_foreground": "#ffffff",
+        "secondary": "#10b981",
+        "secondary_foreground": "#000000",
+        "accent": "#2dd4bf",
+        "accent_foreground": "#000000",
+        "muted": "#171717",
+        "muted_foreground": "#a3a3a3",
+        "border": "#262626",
+        "input": "#262626",
+        "ring": "#7c3aed"
+      },
+      "gradients": {
+        "hero_glow": "radial-gradient(circle at center, rgba(124, 58, 237, 0.15) 0%, rgba(5, 5, 5, 0) 70%)",
+        "card_border": "linear-gradient(45deg, transparent 0%, rgba(124, 58, 237, 0.5) 50%, transparent 100%)"
+      }
+    },
+    "spacing": {
+      "container_padding": "p-6 md:p-12 lg:p-24",
+      "section_gap": "gap-16 md:gap-32",
+      "element_gap": "gap-4 md:gap-8"
+    },
+    "visual_enhancers": {
+      "glassmorphism": "backdrop-blur-xl bg-black/40 border border-white/10",
+      "neon_glow": "shadow-[0_0_20px_rgba(124,58,237,0.3)]",
+      "tracing_beam": "Animated gradient border using mask-image or framer-motion"
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 shadow-[0_0_15px_rgba(124,58,237,0.4)] transition-all duration-300 rounded-full px-8 py-6 font-bold tracking-wide",
+      "secondary": "bg-transparent border border-white/20 hover:bg-white/10 text-white rounded-full px-8 py-6 font-medium backdrop-blur-sm"
+    },
+    "cards": {
+      "product": "group relative overflow-hidden rounded-2xl bg-card border border-white/5 hover:border-primary/50 transition-colors duration-500",
+      "pricing": "relative p-8 rounded-3xl bg-card/50 border border-white/10 hover:bg-card/80 transition-all duration-300"
+    },
+    "inputs": {
+      "default": "bg-black/50 border-white/10 focus:border-primary/50 focus:ring-primary/20 rounded-xl h-12 px-4"
+    }
+  },
+  "layout_strategies": {
+    "hero_section": {
+      "type": "Immersive Cinematic",
+      "structure": "Full-screen height (min-h-[90vh]), centered content with massive typography (text-6xl to text-8xl). Background image with heavy dark overlay + radial gradient glow.",
+      "elements": ["Floating 3D-style logos", "Glowing primary CTA", "Social proof ticker at bottom"]
+    },
+    "product_catalog": {
+      "type": "Bento Grid / Tetris",
+      "grid_cols": "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+      "gap": "gap-6",
+      "card_style": "Minimalist dark cards with large cover art, price tag in neon accent, and 'Buy Now' button hidden until hover."
+    },
+    "pricing_table": {
+      "type": "Comparative 3-Tier",
+      "highlight": "Center 'Best Value' card with 'Tracing Beam' border effect and slightly elevated scale.",
+      "features": "Checkmarks in bright green (secondary color), cross marks in muted gray."
+    }
+  },
+  "assets": {
+    "images": {
+      "hero_background": "https://images.unsplash.com/photo-1760385737558-41fd105bacf0?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "auth_background": "https://images.unsplash.com/photo-1761344175797-047f049c9b32?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "logos": {
+        "netflix": "https://images.unsplash.com/photo-1637363990764-de84fd247b7d?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "spotify": "https://images.unsplash.com/photo-1706879350865-e1cdb3792b22?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "disney_plus": "https://images.unsplash.com/photo-1662338571360-e20bfb6f2545?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "hbo_max": "https://images.unsplash.com/photo-1761044590940-9e3205a60b92?crop=entropy&cs=srgb&fm=jpg&q=85",
+        "amazon_prime": "https://images.unsplash.com/photo-1662466767400-27c176fab51b?crop=entropy&cs=srgb&fm=jpg&q=85"
+      },
+      "placeholders": {
+        "user_avatar": "https://images.unsplash.com/photo-1632893037506-aac33bf18107?crop=entropy&cs=srgb&fm=jpg&q=85"
+      }
+    },
+    "icons": "Use Lucide React (default). For brand icons, use simple SVGs or the provided images."
+  },
+  "motion": {
+    "library": "framer-motion",
+    "page_transition": {
+      "initial": { "opacity": 0, "y": 20 },
+      "animate": { "opacity": 1, "y": 0 },
+      "exit": { "opacity": 0, "y": -20 },
+      "transition": { "duration": 0.4, "ease": "easeOut" }
+    },
+    "hover_effects": {
+      "scale": 1.02,
+      "glow": "box-shadow: 0 0 20px rgba(124,58,237,0.4)"
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. INSTALL FONTS: Add '@fontsource/unbounded' and '@fontsource/manrope' to package.json immediately.",
+    "2. SETUP THEME: Overwrite 'tailwind.config.js' with the colors defined in this JSON. Ensure 'darkMode' is set to 'class'.",
+    "3. CLEANUP: Remove all default styles in 'App.css' and 'index.css'. Replace with a clean reset that applies the dark background globally.",
+    "4. COMPONENT OVERRIDES: When using Shadcn components (like Card or Button), use the 'className' prop to inject the custom styles defined here. Do not rely on default Shadcn styles.",
+    "5. IMAGES: Use the provided Unsplash URLs for the catalog. Do not leave empty image slots.",
+    "6. TESTING: Add 'data-testid' to all interactive elements (buttons, inputs, product cards).",
+    "7. LAYOUT: Use 'grid-cols-1' for mobile and expand to 'grid-cols-4' for desktop. Always check responsiveness.",
+    "8. CRITICAL: Ensure the 'Mercado Pago' checkout flow is simulated or mocked if no API key is present, but the UI must look real."
+  ],
+  "universal_guidelines": [
+    "Avoid gradients on text unless it's a very large heading.",
+    "Never use pure black (#000000) for cards; use #0a0a0a or #121212.",
+    "Always add a subtle border (border-white/5) to dark cards to separate them from the background.",
+    "Use generous padding (p-8+) inside cards.",
+    "Input fields should have a height of at least 48px (h-12) for better touch targets."
+  ]
+}
