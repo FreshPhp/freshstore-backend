@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 import mercadopago
 import hmac
 import hashlib
+import uvicorn
 import json
 import jwt
 from passlib.context import CryptContext
@@ -577,3 +578,12 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+if __name__ == "__main__":
+
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        reload=False
+    )
