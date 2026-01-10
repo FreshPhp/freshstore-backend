@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import mercadopago
 import hmac
-import hashlib
+from contextlib import asynccontextmanager
 import uvicorn
 import json
 import jwt
@@ -41,7 +41,31 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Security
 security = HTTPBearer()
 
-app = FastAPI(title="StreamShop API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # STARTUP
+    try:
+        await db.users.create_index("email", unique=True)
+        await db.users.create_index("id", unique=True)
+        await db.products.create_index("id", unique=True)
+        await db.orders.create_index("id", unique=True)
+        await db.orders.create_index("userId")
+        await db.carts.create_index("sessionId")
+        await db.carts.create_index("userId")
+        logger.info("Database indexes created")
+    except Exception as e:
+        logger.error(f"Error creating indexes: {str(e)}")
+
+    yield  # 🚀 app rodando
+
+    # SHUTDOWN
+    client.close()
+    logger.info("MongoDB connection closed")
+app = FastAPI(
+    title="StreamShop API",
+    lifespan=lifespan
+)
 api_router = APIRouter(prefix="/api")
 
 # Configure logging
@@ -561,23 +585,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    try:
-        await db.users.create_index("email", unique=True)
-        await db.users.create_index("id", unique=True)
-        await db.products.create_index("id", unique=True)
-        await db.orders.create_index("id", unique=True)
-        await db.orders.create_index("userId")
-        await db.carts.create_index("sessionId")
-        await db.carts.create_index("userId")
-        logger.info("Database indexes created")
-    except Exception as e:
-        logger.error(f"Error creating indexes: {str(e)}")
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
 
 if __name__ == "__main__":
 
