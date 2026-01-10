@@ -12,6 +12,47 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { Tag, Loader2 } from 'lucide-react';
 import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
+import React, { useState, useEffect } from "react";
+import CheckoutButton from "../components/CheckoutButton";
+import { processPayment } from "../lib/api"; // seu endpoint /payments/process
+
+
+
+export default function CheckoutPage({ cart, customerInfo }) {
+  const [preferenceId, setPreferenceId] = useState(null);
+  const [orderId, setOrderId] = useState(null);
+
+  useEffect(() => {
+    const createPayment = async () => {
+      const response = await processPayment({
+        paymentData: {
+          token: "token_temporario",
+          paymentMethodId: "pix",
+          installments: 1
+        },
+        customerInfo,
+        items: cart.items,
+        subtotal: cart.subtotal,
+        discount: cart.discount || 0,
+        total: cart.total,
+        sessionId: cart.sessionId,
+        userId: customerInfo.userId
+      });
+
+      setPreferenceId(response.preferenceId);
+      setOrderId(response.orderId);
+    };
+
+    createPayment();
+  }, [cart, customerInfo]);
+
+  return (
+    <div>
+      <h1>Finalizar Compra</h1>
+      {preferenceId && <CheckoutButton preferenceId={preferenceId} />}
+    </div>
+  );
+}
 
 export default function CheckoutPage() {
   const navigate = useNavigate();

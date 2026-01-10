@@ -295,59 +295,11 @@ async def get_order(order_id: str):
     return order
 
 # ========== PAYMENTS ==========
-@api_router.post("/payments/process", response_model=PaymentResponse)
-async def process_payment(request: PaymentRequest, background_tasks: BackgroundTasks):
+@api_router.post("/payments/process", response_model=dict)
+async def process_payment_checkout(request: PaymentRequest):
     try:
-        logger.info(f"Processing payment for {request.customerInfo.email}")
         order_id = str(uuid.uuid4())
-        # Mock mode if MP não configurado
-        if not mp:
-            order_doc = {
-                "id": order_id,
-                "userId": request.userId,
-                "sessionId": request.sessionId,
-                "items": [item.model_dump() for item in request.items],
-                "subtotal": request.subtotal,
-                "discount": request.discount,
-                "total": request.total,
-                "customer": request.customerInfo.model_dump(),
-                "mercadopagoPaymentId": "mock_payment_id",
-                "mercadopagoStatus": "approved",
-                "status": "approved",
-                "createdAt": datetime.now(timezone.utc).isoformat(),
-                "updatedAt": datetime.now(timezone.utc).isoformat()
-            }
-            await db.orders.insert_one(order_doc)
-            return PaymentResponse(status="approved", orderId=order_id, paymentId="mock_payment_id", message="Payment approved (mock)")
-
-        payment_body = {
-            "transaction_amount": float(request.total),
-            "token": request.paymentData.token,
-            "description": f"StreamShop Order {order_id[:8]}",
-            "payment_method_id": request.paymentData.paymentMethodId,
-            "installments": request.paymentData.installments,
-            "payer": {
-                "email": request.customerInfo.email,
-                "first_name": request.customerInfo.firstName,
-                "last_name": request.customerInfo.lastName,
-                "phone": {"area_code": "00", "number": request.customerInfo.phone},
-                "address": {"street_name": request.customerInfo.address, "street_number":"1", "zip_code":request.customerInfo.postalCode}
-            },
-            "external_reference": order_id,
-            "statement_descriptor": "STREAMSHOP"
-        }
-
-        payment_response = mp.payment().create(payment_body)
-        if payment_response["status"] != 201:
-            error_message = payment_response.get("response", {}).get("message", "Unknown error")
-            raise HTTPException(status_code=400, detail=f"Payment failed: {error_message}")
-
-        payment_result = payment_response["response"]
-        payment_id = payment_result.get("id")
-        payment_status = payment_result.get("status")
-
-        internal_status = "approved" if payment_status == "approved" else "pending" if payment_status in ["pending","in_process"] else "failed"
-
+        # Salvar pedido inicial como "pending"
         order_doc = {
             "id": order_id,
             "userId": request.userId,
@@ -357,21 +309,60 @@ async def process_payment(request: PaymentRequest, background_tasks: BackgroundT
             "discount": request.discount,
             "total": request.total,
             "customer": request.customerInfo.model_dump(),
-            "mercadopagoPaymentId": payment_id,
-            "mercadopagoStatus": payment_status,
-            "status": internal_status,
+            "status": "pending",
             "createdAt": datetime.now(timezone.utc).isoformat(),
             "updatedAt": datetime.now(timezone.utc).isoformat()
         }
         await db.orders.insert_one(order_doc)
-        logger.info(f"Order {order_id} created with status {internal_status}")
-        return PaymentResponse(status=internal_status, orderId=order_id, paymentId=payment_id, message=f"Payment {internal_status}")
 
-    except HTTPException as e:
-        raise e
+        if not mp:
+            # mock
+            return {"status": "pending", "orderId": order_id, "preferenceId": "mock"}
+
+        # Criar preference no Mercado Pago
+        items = []
+        for item in request.items:
+            items.append({
+                "title": item.name,
+                "quantity": item.quantity,
+                "unit_price": float(item.price),
+                "currency_id": "BRL"
+            })
+
+        preference_data = {
+            "items": items,
+            "payer": {
+                "email": request.customerInfo.email,
+                "first_name": request.customerInfo.firstName,
+                "last_name": request.customerInfo.lastName,
+                "phone": {
+                    "area_code": "00",
+                    "number": request.customerInfo.phone
+                },
+                "address": {
+                    "street_name": request.customerInfo.address,
+                    "street_number": "1",
+                    "zip_code": request.customerInfo.postalCode
+                }
+            },
+            "back_urls": {
+                "success": f"http://localhost:3000/payment-success?orderId={order_id}",
+                "pending": f"http://localhost:3000/payment-pending?orderId={order_id}",
+                "failure": f"http://localhost:3000/payment-failed?orderId={order_id}"
+            },
+            "auto_return": "all",
+            "external_reference": order_id
+        }
+
+        preference_response = mp.preference().create(preference_data)
+        preference_id = preference_response["response"]["id"]
+
+        return {"status": "pending", "orderId": order_id, "preferenceId": preference_id}
+
     except Exception as e:
-        logger.error(f"Payment processing error: {str(e)}")
+        logger.error(f"Error creating checkout preference: {str(e)}")
         raise HTTPException(status_code=500, detail="Payment processing failed")
+
 
 @api_router.get("/payments/config")
 async def get_payment_config():
