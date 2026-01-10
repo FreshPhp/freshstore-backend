@@ -571,6 +571,27 @@ async def seed_database():
 
 # ============ HEALTH CHECK ============
 
+
+@app.get("/")
+async def root():
+    return {
+        "status": "ok",
+        "service": "StreamShop API",
+        "docs": "/docs",
+        "health": "/api/health"
+    }
+  
+
+@app.get("/bia")
+async def root():
+    return {
+        "status": "Eu te amo",
+        "service": "StreamShop API",
+        "docs": "/docs",
+        "health": "/api/health"
+    }
+
+
 @api_router.get("/health")
 async def health():
     return {"status": "healthy"}
