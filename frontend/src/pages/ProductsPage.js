@@ -1,84 +1,90 @@
-import React, { useEffect, useState } from 'react';
-import { products } from '../lib/api';
-import ProductCard from '../components/ProductCard';
-import { motion } from 'framer-motion';
-import { Search } from 'lucide-react';
-import { Input } from '../components/ui/input';
+import React, { useEffect, useMemo, useState } from "react";
+import { products } from "../lib/api";
+import ProductCard from "../components/ProductCard";
+import { motion } from "framer-motion";
+import { Search } from "lucide-react";
+import { Input } from "../components/ui/input";
 
 export default function ProductsPage() {
   const [allProducts, setAllProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPlatform, setSelectedPlatform] = useState('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPlatform, setSelectedPlatform] = useState("all");
 
   useEffect(() => {
     loadProducts();
   }, []);
 
-  useEffect(() => {
-    filterProducts();
-  }, [searchQuery, selectedPlatform, allProducts]);
-
-  const loadProducts = async () => {
+  async function loadProducts() {
     try {
       const response = await products.getAll();
+
+      if (!Array.isArray(response?.data)) {
+        throw new Error("Resposta inválida da API");
+      }
+
       setAllProducts(response.data);
-      setFilteredProducts(response.data);
     } catch (error) {
-      console.error('Error loading products:', error);
+      console.error("❌ Erro ao carregar produtos:", error);
+
+      // fallback visual
+      setAllProducts([]);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const filterProducts = () => {
+  const filteredProducts = useMemo(() => {
     let filtered = [...allProducts];
 
     if (searchQuery) {
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (p) =>
-          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.platform.toLowerCase().includes(searchQuery.toLowerCase())
+          p.name?.toLowerCase().includes(q) ||
+          p.platform?.toLowerCase().includes(q)
       );
     }
 
-    if (selectedPlatform !== 'all') {
-      filtered = filtered.filter((p) => p.platform === selectedPlatform);
+    if (selectedPlatform !== "all") {
+      filtered = filtered.filter(
+        (p) => p.platform === selectedPlatform
+      );
     }
 
-    setFilteredProducts(filtered);
-  };
+    return filtered;
+  }, [allProducts, searchQuery, selectedPlatform]);
 
-  const platforms = ['all', ...new Set(allProducts.map((p) => p.platform))];
+  const platforms = useMemo(() => {
+    return ["all", ...new Set(allProducts.map((p) => p.platform).filter(Boolean))];
+  }, [allProducts]);
 
   return (
-    <div className="min-h-screen py-12" data-testid="products-page">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-16 bg-background text-foreground">
+      <div className="max-w-7xl mx-auto px-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.4 }}
         >
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-heading font-bold text-white mb-4">
+          <h1 className="text-4xl sm:text-5xl font-heading font-bold mb-4">
             Nossos Produtos
           </h1>
-          <p className="text-xl text-white/60 mb-12">
-            Escolha entre as melhores plataformas de streaming com preços especiais.
+
+          <p className="text-white/60 mb-12">
+            Streaming premium com entrega imediata.
           </p>
 
-          {/* Filters */}
-          <div className="glass p-6 rounded-2xl border border-white/10 mb-12">
+          {/* Filtros */}
+          <div className="p-6 rounded-2xl border border-white/10 bg-white/5 backdrop-blur mb-12">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white/40 w-5 h-5" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40 w-5 h-5" />
                 <Input
-                  type="text"
                   placeholder="Buscar produtos..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 bg-black/50 border-white/10 focus:border-primary/50 text-white h-12"
-                  data-testid="search-input"
+                  className="pl-10 h-12 bg-black/40 border-white/10 text-white"
                 />
               </div>
 
@@ -87,32 +93,33 @@ export default function ProductsPage() {
                   <button
                     key={platform}
                     onClick={() => setSelectedPlatform(platform)}
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                    className={`px-4 py-2 rounded-full text-sm transition ${
                       selectedPlatform === platform
-                        ? 'bg-primary text-white neon-glow'
-                        : 'bg-white/5 text-white/60 hover:bg-white/10'
+                        ? "bg-primary text-white"
+                        : "bg-white/5 text-white/60 hover:bg-white/10"
                     }`}
-                    data-testid={`filter-${platform}`}
                   >
-                    {platform === 'all' ? 'Todos' : platform}
+                    {platform === "all" ? "Todos" : platform}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Products Grid */}
+          {/* Lista */}
           {loading ? (
-            <div className="text-center text-white/60 py-12">Carregando produtos...</div>
+            <div className="text-center text-white/60 py-12">
+              Carregando produtos...
+            </div>
           ) : filteredProducts.length === 0 ? (
-            <div className="text-center text-white/60 py-12" data-testid="no-products-message">
+            <div className="text-center text-white/60 py-12">
               Nenhum produto encontrado.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredProducts.map((product, index) => (
                 <motion.div
-                  key={product.id}
+                  key={product._id || product.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
