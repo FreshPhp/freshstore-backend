@@ -12,7 +12,6 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { Tag, Loader2 } from 'lucide-react';
 import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
-import React, { useState, useEffect } from "react";
 import CheckoutButton from "../components/CheckoutButton";
 import { processPayment } from "../lib/api"; // seu endpoint /payments/process
 
