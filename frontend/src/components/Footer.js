@@ -11,7 +11,7 @@ export default function Footer() {
               <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center neon-glow">
                 <span className="text-white font-bold text-xl">S</span>
               </div>
-              <span className="text-xl font-heading font-bold text-white">StreamShop</span>
+              <span className="text-xl font-heading font-bold text-white">FreshStore</span>
             </div>
             <p className="text-white/60 text-sm">
               A melhor loja de contas de streaming com preços acessíveis e atendimento de qualidade.
@@ -52,7 +52,7 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-white/5 mt-8 pt-8 text-center text-white/40 text-sm">
-          <p>© 2025 StreamShop. Todos os direitos reservados.</p>
+          <p>© 2025 FreshStore. Todos os direitos reservados.</p>
         </div>
       </div>
     </footer>

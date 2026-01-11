@@ -29,7 +29,7 @@ export default function Navbar() {
             <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center neon-glow">
               <span className="text-white font-bold text-xl">S</span>
             </div>
-            <span className="text-xl font-heading font-bold text-white">StreamShop</span>
+            <span className="text-xl font-heading font-bold text-white">FreshStore</span>
           </Link>
 
           <div className="hidden md:flex items-center space-x-8">

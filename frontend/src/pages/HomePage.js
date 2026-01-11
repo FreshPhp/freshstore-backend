@@ -77,7 +77,7 @@ export default function HomePage() {
             transition={{ duration: 0.6 }}
           >
             <h1 className="text-5xl sm:text-6xl lg:text-8xl font-heading font-black text-white mb-6">
-              Streaming
+              Vendas
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
                 Sem Limites
               </span>
@@ -132,7 +132,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-heading font-bold mb-4">
-              Por que escolher a StreamShop?
+              Por que escolher a FreshStore?
             </h2>
             <p className="text-white/60 max-w-2xl mx-auto">
               Segurança, rapidez e qualidade premium.
