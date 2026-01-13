@@ -40,7 +40,6 @@ export default function CheckoutPage() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
-
   const [paymentAmount] = useState(() => total);
 
 
@@ -164,77 +163,121 @@ export default function CheckoutPage() {
     return null;
   }
 
- }
+  return (
+    <div className="min-h-screen py-12" data-testid="checkout-page">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <motion.div 
+        
+        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
 
- return (
-  <div className="min-h-screen py-12" data-testid="checkout-page">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <h1 className="text-4xl sm:text-5xl font-heading font-bold text-white mb-12">Finalizar Compra</h1>
+</motion.div>
 
-      {/* ✅ MOTION SÓ NO TÍTULO / LAYOUT */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <h1 className="text-4xl sm:text-5xl font-heading font-bold text-white mb-12">
-          Finalizar Compra
-        </h1>
-      </motion.div>
-
-      {/* ❌ FORA DO MOTION */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-        {/* FORMULÁRIO */}
-        <div className="lg:col-span-2 space-y-8">
-
-          {/* Customer Information */}
-          <Card className="glass p-8 rounded-2xl border border-white/10">
-            <h2 className="text-2xl font-heading font-bold text-white mb-6">
-              Informações de Contato
-            </h2>
-
-            <div className="space-y-4">
-              {['email','firstName','lastName','phone','address','city','postalCode'].map(field => (
-                <div key={field}>
-                  <Label className="text-white mb-2">
-                    {field}
-                  </Label>
-                  <Input
-                    value={customerInfo[field]}
-                    onChange={e =>
-                      setCustomerInfo({ ...customerInfo, [field]: e.target.value })
-                    }
-                    className="bg-black/50 border-white/10 text-white h-12"
-                  />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Checkout Form */}
+            <div className="lg:col-span-2 space-y-8">
+              {/* Customer Information */}
+              <Card className="glass p-8 rounded-2xl border border-white/10">
+                <h2 className="text-2xl font-heading font-bold text-white mb-6">Informações de Contato</h2>
+                <div className="space-y-4">
+                  {/* Campos do cliente */}
+                  {['email','firstName','lastName','phone','address','city','postalCode'].map((field) => (
+                    <div key={field}>
+                      <Label htmlFor={field} className="text-white mb-2">{field.charAt(0).toUpperCase()+field.slice(1)} *</Label>
+                      <Input
+                        id={field}
+                        type={field === 'email' ? 'email' : 'text'}
+                        value={customerInfo[field]}
+                        onChange={(e) => setCustomerInfo({ ...customerInfo, [field]: e.target.value })}
+                        className="bg-black/50 border-white/10 text-white h-12"
+                        placeholder={field}
+                        required
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </Card>
+
+              {/* Payment Method */}
+              <Card className="glass p-8 rounded-2xl border border-white/10">
+                <h2 className="text-2xl font-heading font-bold text-white mb-6">Método de Pagamento</h2>
+
+                {mpInitialized ? (
+                  <CardPayment
+                   initialization={{ amount: paymentAmount }}
+                    onSubmit={handlePaymentSubmit}
+                    locale="pt-BR"
+                  />
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-white/60 mb-4">Pagamentos serão processados após a confirmação</p>
+                    <Button
+                      onClick={() => handlePaymentSubmit({ token: 'mock_token', installments: 1, payment_method_id: 'mock' })}
+                      disabled={processing}
+                      className="bg-primary hover:bg-primary/90 text-white rounded-full px-8 py-4"
+                    >
+                      {processing ? <>Processando...</> : 'Confirmar Pedido'}
+                    </Button>
+                  </div>
+                )}
+              </Card>
             </div>
-          </Card>
 
-          {/* 🔒 PAGAMENTO SEM MOTION */}
-          <Card className="glass p-8 rounded-2xl border border-white/10">
-            <h2 className="text-2xl font-heading font-bold text-white mb-6">
-              Método de Pagamento
-            </h2>
+            {/* Order Summary */}
+            <div className="lg:col-span-1">
+              <Card className="glass p-8 rounded-2xl border border-white/10 sticky top-24">
+                <h2 className="text-2xl font-heading font-bold text-white mb-6">Resumo do Pedido</h2>
+                <div className="space-y-4 mb-6">
+                  {cartItemsWithDetails.map((item) => (
+                    <div key={item.productId} className="flex justify-between text-white/80">
+                      <span>{item.product.name} x{item.quantity}</span>
+                      <span>{formatPrice(item.product.price * item.quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-white/10 pt-4 mb-4">
+                  <div className="flex justify-between text-white/60 mb-2">
+                    <span>Subtotal</span>
+                    <span>{formatPrice(subtotal)}</span>
+                  </div>
+                  {appliedCoupon && (
+                    <div className="flex justify-between text-secondary mb-2">
+                      <span>Desconto ({appliedCoupon.code})</span>
+                      <span>-{formatPrice(discount)}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="border-t border-white/10 pt-4 mb-6">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-white text-lg font-bold">Total</span>
+                    <span className="text-3xl font-heading font-bold text-white neon-glow">{formatPrice(total)}</span>
+                  </div>
+                </div>
 
-            {mpInitialized && (
-              <div id="mp-card-wrapper">
-                <CardPayment
-                  initialization={{ amount: paymentAmount }}
-                  onSubmit={handlePaymentSubmit}
-                  locale="pt-BR"
-                />
-              </div>
-            )}
-          </Card>
-        </div>
-
-        {/* RESUMO */}
-        <div className="lg:col-span-1">
-          {/* resumo permanece igual */}
-        </div>
-
+                {/* Coupon */}
+                <div className="space-y-3">
+                  <Label className="text-white">Cupom de Desconto</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      placeholder="CÓDIGO"
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      disabled={!!appliedCoupon}
+                    />
+                    <Button onClick={handleApplyCoupon} disabled={couponLoading || !!appliedCoupon} variant="outline" className="border-white/20 hover:bg-white/10">
+                      {couponLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Tag className="w-4 h-4" />}
+                    </Button>
+                  </div>
+                  {appliedCoupon && <p className="text-secondary text-sm">✓ Cupom aplicado: {(appliedCoupon.discount * 100).toFixed(0)}% de desconto</p>}
+                </div>
+                <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/5">
+                  <p className="text-white/60 text-sm">🔒 Pagamento seguro processado via Mercado Pago</p>
+                </div>
+              </Card>
+            </div>
+          </div>
       </div>
     </div>
-  </div>
-);
+  );
+}
