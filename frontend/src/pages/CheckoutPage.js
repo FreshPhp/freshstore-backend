@@ -11,7 +11,7 @@ import { formatPrice, getSessionId } from '../lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { Tag, Loader2 } from 'lucide-react';
-import { initMercadoPago, CardForm  } from '@mercadopago/sdk-react';
+import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
 import CheckoutButton from "../components/CheckoutButton";
 import { processPayment } from "../lib/api"; // seu endpoint /payments/process
 
@@ -100,6 +100,7 @@ export default function CheckoutPage() {
       toast.error('Por favor, preencha todos os campos obrigatórios');
       return;
     }
+  
 
     setProcessing(true);
 
@@ -115,7 +116,7 @@ export default function CheckoutPage() {
         paymentData: {
           token: paymentData.token,
           installments: paymentData.installments || 1,
-          paymentMethodId: paymentData.payment_method_id,
+          paymentMethodId: paymentData.paymentMethodId,
         },
         customerInfo,
         items: orderItems,
@@ -196,18 +197,11 @@ export default function CheckoutPage() {
                 <h2 className="text-2xl font-heading font-bold text-white mb-6">Método de Pagamento</h2>
 
                 {mpInitialized ? (
-                  <CardForm
-                        initialization={{ amount: total.toString() }}
-                        onSubmit={(data) => {
-                          handlePaymentSubmit({
-                            token: data.token,
-                            installments: Number(data.installments),
-                            payment_method_id: data.payment_method_id, 
-                          });
-                        }}
-                        locale="pt-BR"
-                      />
-
+                  <CardPayment
+                    initialization={{ amount: total }}
+                    onSubmit={handlePaymentSubmit}
+                    locale="pt-BR"
+                  />
                 ) : (
                   <div className="text-center py-8">
                     <p className="text-white/60 mb-4">Pagamentos serão processados após a confirmação</p>
