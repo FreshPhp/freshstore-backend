@@ -144,10 +144,14 @@ class Order(BaseModel):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
 class PaymentMethodData(BaseModel):
     token: str
     installments: int = 1
-    paymentMethodId: str
+    paymentMethodId: str = Field(alias="payment_method_id")
+
+    model_config = ConfigDict(populate_by_name=True)
+
 
 class CustomerInfo(BaseModel):
     email: EmailStr
