@@ -40,8 +40,6 @@ export default function CheckoutPage() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponLoading, setCouponLoading] = useState(false);
-  const [paymentAmount] = useState(() => total);
-
 
   useEffect(() => {
     loadData();
@@ -166,12 +164,8 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen py-12" data-testid="checkout-page">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div 
-        
-        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <h1 className="text-4xl sm:text-5xl font-heading font-bold text-white mb-12">Finalizar Compra</h1>
-</motion.div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Checkout Form */}
@@ -204,7 +198,7 @@ export default function CheckoutPage() {
 
                 {mpInitialized ? (
                   <CardPayment
-                   initialization={{ amount: paymentAmount }}
+                    initialization={{ amount: total }}
                     onSubmit={handlePaymentSubmit}
                     locale="pt-BR"
                   />
@@ -277,6 +271,7 @@ export default function CheckoutPage() {
               </Card>
             </div>
           </div>
+        </motion.div>
       </div>
     </div>
   );
