@@ -77,9 +77,9 @@ export default function HomePage() {
             transition={{ duration: 0.6 }}
           >
             <h1 className="text-5xl sm:text-6xl lg:text-8xl font-heading font-black text-white mb-6">
-              Vendas
+              Tudo
               <span className="block text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
-                Sem Limites
+                Que você precisa!
               </span>
             </h1>
 

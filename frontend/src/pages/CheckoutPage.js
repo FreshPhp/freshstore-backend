@@ -11,7 +11,7 @@ import { formatPrice, getSessionId } from '../lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { Tag, Loader2 } from 'lucide-react';
-import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
+import { initMercadoPago, CardForm  } from '@mercadopago/sdk-react';
 import CheckoutButton from "../components/CheckoutButton";
 import { processPayment } from "../lib/api"; // seu endpoint /payments/process
 
@@ -196,11 +196,18 @@ export default function CheckoutPage() {
                 <h2 className="text-2xl font-heading font-bold text-white mb-6">Método de Pagamento</h2>
 
                 {mpInitialized ? (
-                  <CardPayment
-                    initialization={{ amount: total }}
-                    onSubmit={handlePaymentSubmit}
-                    locale="pt-BR"
-                  />
+                  <CardForm
+                        initialization={{ amount: total.toString() }}
+                        onSubmit={(data) => {
+                          handlePaymentSubmit({
+                            token: data.token,
+                            installments: Number(data.installments),
+                            payment_method_id: data.payment_method_id, 
+                          });
+                        }}
+                        locale="pt-BR"
+                      />
+
                 ) : (
                   <div className="text-center py-8">
                     <p className="text-white/60 mb-4">Pagamentos serão processados após a confirmação</p>
