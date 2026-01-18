@@ -76,7 +76,7 @@ products = [
         "name": "YouTube Premium",
         "description": "YouTube sem anúncios e música incluída",
         "platform": "YouTube",
-        "price": 20.90,
+        "price": 1,
         "duration": "1 mês",
         "image": "https://images.unsplash.com/photo-1611162616475-46b635cb6868?crop=entropy&cs=srgb&fm=jpg&q=85",
         "features": ["Sem anúncios", "Download de vídeos", "YouTube Music Premium", "Reprodução em segundo plano"],
