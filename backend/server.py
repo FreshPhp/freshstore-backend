@@ -382,7 +382,7 @@ async def seed():
     if await db.products.find_one({}):
         return {"message": "Already seeded"}
     products = [
-        {"id": str(uuid.uuid4()), "name": "Netflix Premium", "description": "4 telas em Ultra HD", "platform": "Netflix", "price": 29.90, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1637363990764-de84fd247b7d?w=800", "features": ["4 telas", "Ultra HD", "Download", "Catálogo completo"], "isAvailable": True},
+        {"id": str(uuid.uuid4()), "name": "Netflix ttPremium", "description": "4 telas em Ultra HD", "platform": "Netflix", "price": 1, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1637363990764-de84fd247b7d?w=800", "features": ["4 telas", "Ultra HD", "Download", "Catálogo completo"], "isAvailable": True},
         {"id": str(uuid.uuid4()), "name": "Spotify Premium", "description": "Música sem anúncios", "platform": "Spotify", "price": 19.90, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1706879350865-e1cdb3792b22?w=800", "features": ["Sem anúncios", "Offline", "Alta qualidade"], "isAvailable": True},
         {"id": str(uuid.uuid4()), "name": "Disney+", "description": "Disney, Pixar, Marvel, Star Wars", "platform": "Disney+", "price": 27.90, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1662338571360-e20bfb6f2545?w=800", "features": ["4K", "4 dispositivos", "Download"], "isAvailable": True}
     ]
