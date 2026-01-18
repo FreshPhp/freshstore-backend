@@ -16,24 +16,26 @@ from contextlib import asynccontextmanager
 from passlib.context import CryptContext
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / '.env') #load_dotenv(ROOT_DIR / '.env')
 
 # Config
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "APP_USR-2987096918798129-011011-407cf9fee7b658b4a9613ec801aa84e1-1546683858")
-MERCADOPAGO_PUBLIC_KEY = os.getenv("MERCADOPAGO_PUBLIC_KEY", "APP_USR-e07c4187-c8a1-4e56-9839-9f6b35b55f98")
-JWT_SECRET = os.getenv("JWT_SECRET", "Fresh789811")
+MERCADOPAGO_ACCESS_TOKEN = os.getenv("MERCADOPAGO_ACCESS_TOKEN")
+MERCADOPAGO_PUBLIC_KEY = os.getenv("MERCADOPAGO_PUBLIC_KEY")
+JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
-console.log(
-  "MP TOKEN:",
-  process.env.MERCADOPAGO_ACCESS_TOKEN
-)
+
+if not MERCADOPAGO_ACCESS_TOKEN:
+    raise RuntimeError("❌ MERCADOPAGO_ACCESS_TOKEN NÃO DEFINIDO")
 
 
-mp = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN) if MERCADOPAGO_ACCESS_TOKEN else None
+print("🔑 MP ACCESS TOKEN:", MERCADOPAGO_ACCESS_TOKEN[:10] if MERCADOPAGO_ACCESS_TOKEN else None)
+print("🔑 MP PUBLIC KEY:", MERCADOPAGO_PUBLIC_KEY[:10] if MERCADOPAGO_PUBLIC_KEY else None)
+
+mp = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN) 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
