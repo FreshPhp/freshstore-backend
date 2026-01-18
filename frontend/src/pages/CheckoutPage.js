@@ -10,12 +10,8 @@ import { Card } from '../components/ui/card';
 import { formatPrice, getSessionId } from '../lib/utils';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Tag, Loader2 } from 'lucide-react';
+import { Tag, Loader2, CreditCard, QrCode, Receipt } from 'lucide-react';
 import { initMercadoPago, CardPayment } from '@mercadopago/sdk-react';
-import CheckoutButton from "../components/CheckoutButton";
-import { processPayment } from "../lib/api"; // seu endpoint /payments/process
-
-
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
@@ -25,6 +21,7 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [mpInitialized, setMpInitialized] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('credit_card'); // 'credit_card', 'pix', 'boleto'
 
   const [customerInfo, setCustomerInfo] = useState({
     email: user?.email || '',
@@ -35,6 +32,8 @@ export default function CheckoutPage() {
     city: '',
     postalCode: '',
     country: 'BR',
+    documentType: 'CPF',
+    documentNumber: '',
   });
 
   const [couponCode, setCouponCode] = useState('');
@@ -55,7 +54,7 @@ export default function CheckoutPage() {
       setProductsData(productsRes.data);
 
       if (configRes.data.publicKey) {
-        initMercadoPago(configRes.data.publicKey);
+        initMercadoPago(configRes.data.publicKey, { locale: 'pt-BR' });
         setMpInitialized(true);
       }
     } catch (error) {
@@ -95,12 +94,23 @@ export default function CheckoutPage() {
   const discount = appliedCoupon ? subtotal * appliedCoupon.discount : 0;
   const total = subtotal - discount;
 
-  const handlePaymentSubmit = async (paymentData) => {
+  const validateCustomerInfo = () => {
     if (!customerInfo.email || !customerInfo.firstName || !customerInfo.lastName) {
       toast.error('Por favor, preencha todos os campos obrigatórios');
-      return;
+      return false;
     }
-  
+    
+    if ((paymentMethod === 'pix' || paymentMethod === 'boleto') && !customerInfo.documentNumber) {
+      toast.error('CPF/CNPJ é obrigatório para PIX e Boleto');
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Handler para pagamento com cartão (CardPayment do MP)
+  const handleCardPaymentSubmit = async (formData) => {
+    if (!validateCustomerInfo()) return;
 
     setProcessing(true);
 
@@ -114,11 +124,19 @@ export default function CheckoutPage() {
 
       const paymentRequest = {
         paymentData: {
-          token: paymentData.token,
-          installments: paymentData.installments || 1,
-          paymentMethodId: paymentData.payment_method_id,
+          token: formData.token,
+          installments: formData.installments || 1,
+          paymentMethodId: formData.payment_method_id || formData.paymentMethodId || 'credit_card',
+          issuerId: formData.issuer_id || formData.issuerId,
+          transactionAmount: total,
         },
-        customerInfo,
+        customerInfo: {
+          ...customerInfo,
+          identification: {
+            type: customerInfo.documentType,
+            number: customerInfo.documentNumber,
+          }
+        },
         items: orderItems,
         subtotal,
         discount,
@@ -126,32 +144,84 @@ export default function CheckoutPage() {
         couponCode: appliedCoupon?.code,
         userId: user?.id,
         sessionId: getSessionId(),
+        paymentMethod: 'credit_card',
       };
 
       const response = await payments.process(paymentRequest);
-
-      // Redireciona de acordo com o status retornado pelo backend
-      if (response.data.status === 'approved') {
-        await clearCart();
-        navigate(`/payment-success?orderId=${response.data.orderId}`);
-      } else if (response.data.status === 'pending') {
-        await clearCart();
-        navigate(`/payment-pending?orderId=${response.data.orderId}`);
-      } else {
-        toast.error('Pagamento não foi processado. Tente novamente.');
-      }
+      handlePaymentResponse(response.data);
     } catch (error) {
       console.error('Payment error:', error);
-      toast.error('Erro ao processar pagamento. Tente novamente.');
+      toast.error(error.response?.data?.message || 'Erro ao processar pagamento. Tente novamente.');
     } finally {
       setProcessing(false);
+    }
+  };
+
+  // Handler para PIX e Boleto
+  const handleAlternativePayment = async () => {
+    if (!validateCustomerInfo()) return;
+
+    setProcessing(true);
+
+    try {
+      const orderItems = cartItemsWithDetails.map((item) => ({
+        productId: item.product.id,
+        name: item.product.name,
+        price: item.product.price,
+        quantity: item.quantity,
+      }));
+
+      const paymentRequest = {
+        paymentData: {
+          paymentMethodId: paymentMethod === 'pix' ? 'pix' : 'bolbradesco',
+          transactionAmount: total,
+        },
+        customerInfo: {
+          ...customerInfo,
+          identification: {
+            type: customerInfo.documentType,
+            number: customerInfo.documentNumber,
+          }
+        },
+        items: orderItems,
+        subtotal,
+        discount,
+        total,
+        couponCode: appliedCoupon?.code,
+        userId: user?.id,
+        sessionId: getSessionId(),
+        paymentMethod,
+      };
+
+      const response = await payments.process(paymentRequest);
+      handlePaymentResponse(response.data);
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast.error(error.response?.data?.message || 'Erro ao processar pagamento. Tente novamente.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handlePaymentResponse = async (responseData) => {
+    if (responseData.status === 'approved') {
+      await clearCart();
+      navigate(`/payment-success?orderId=${responseData.orderId}`);
+    } else if (responseData.status === 'pending') {
+      await clearCart();
+      navigate(`/payment-pending?orderId=${responseData.orderId}&method=${paymentMethod}`);
+    } else if (responseData.status === 'in_process') {
+      await clearCart();
+      navigate(`/payment-pending?orderId=${responseData.orderId}&method=${paymentMethod}`);
+    } else {
+      toast.error('Pagamento não foi processado. Tente novamente.');
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-white/60">Carregando...</div>
+        <Loader2 className="w-8 h-8 animate-spin text-white/60" />
       </div>
     );
   }
@@ -160,6 +230,12 @@ export default function CheckoutPage() {
     navigate('/cart');
     return null;
   }
+
+  const paymentMethods = [
+    { id: 'credit_card', name: 'Cartão de Crédito', icon: CreditCard },
+    { id: 'pix', name: 'PIX', icon: QrCode },
+    { id: 'boleto', name: 'Boleto', icon: Receipt },
+  ];
 
   return (
     <div className="min-h-screen py-12" data-testid="checkout-page">
@@ -173,45 +249,189 @@ export default function CheckoutPage() {
               {/* Customer Information */}
               <Card className="glass p-8 rounded-2xl border border-white/10">
                 <h2 className="text-2xl font-heading font-bold text-white mb-6">Informações de Contato</h2>
-                <div className="space-y-4">
-                  {/* Campos do cliente */}
-                  {['email','firstName','lastName','phone','address','city','postalCode'].map((field) => (
-                    <div key={field}>
-                      <Label htmlFor={field} className="text-white mb-2">{field.charAt(0).toUpperCase()+field.slice(1)} *</Label>
-                      <Input
-                        id={field}
-                        type={field === 'email' ? 'email' : 'text'}
-                        value={customerInfo[field]}
-                        onChange={(e) => setCustomerInfo({ ...customerInfo, [field]: e.target.value })}
-                        className="bg-black/50 border-white/10 text-white h-12"
-                        placeholder={field}
-                        required
-                      />
-                    </div>
-                  ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="email" className="text-white mb-2">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={customerInfo.email}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, email: e.target.value })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="seu@email.com"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="phone" className="text-white mb-2">Telefone *</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={customerInfo.phone}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="(11) 99999-9999"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="firstName" className="text-white mb-2">Nome *</Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      value={customerInfo.firstName}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, firstName: e.target.value })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="Nome"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="lastName" className="text-white mb-2">Sobrenome *</Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      value={customerInfo.lastName}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, lastName: e.target.value })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="Sobrenome"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="documentNumber" className="text-white mb-2">
+                      CPF/CNPJ {(paymentMethod === 'pix' || paymentMethod === 'boleto') && '*'}
+                    </Label>
+                    <Input
+                      id="documentNumber"
+                      type="text"
+                      value={customerInfo.documentNumber}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, documentNumber: e.target.value.replace(/\D/g, '') })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="000.000.000-00"
+                      required={paymentMethod === 'pix' || paymentMethod === 'boleto'}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="postalCode" className="text-white mb-2">CEP</Label>
+                    <Input
+                      id="postalCode"
+                      type="text"
+                      value={customerInfo.postalCode}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, postalCode: e.target.value })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="00000-000"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label htmlFor="address" className="text-white mb-2">Endereço</Label>
+                    <Input
+                      id="address"
+                      type="text"
+                      value={customerInfo.address}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, address: e.target.value })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="Rua, número, complemento"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="city" className="text-white mb-2">Cidade</Label>
+                    <Input
+                      id="city"
+                      type="text"
+                      value={customerInfo.city}
+                      onChange={(e) => setCustomerInfo({ ...customerInfo, city: e.target.value })}
+                      className="bg-black/50 border-white/10 text-white h-12"
+                      placeholder="Cidade"
+                    />
+                  </div>
                 </div>
               </Card>
 
-              {/* Payment Method */}
+              {/* Payment Method Selection */}
               <Card className="glass p-8 rounded-2xl border border-white/10">
                 <h2 className="text-2xl font-heading font-bold text-white mb-6">Método de Pagamento</h2>
+                
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                  {paymentMethods.map((method) => {
+                    const Icon = method.icon;
+                    return (
+                      <button
+                        key={method.id}
+                        onClick={() => setPaymentMethod(method.id)}
+                        className={`p-4 rounded-xl border-2 transition-all ${
+                          paymentMethod === method.id
+                            ? 'border-primary bg-primary/10'
+                            : 'border-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <Icon className={`w-8 h-8 mx-auto mb-2 ${
+                          paymentMethod === method.id ? 'text-primary' : 'text-white/60'
+                        }`} />
+                        <p className={`text-sm ${
+                          paymentMethod === method.id ? 'text-white font-semibold' : 'text-white/60'
+                        }`}>
+                          {method.name}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
 
-                {mpInitialized ? (
-                  <CardPayment
-                    initialization={{ amount: total }}
-                    onSubmit={handlePaymentSubmit}
-                    locale="pt-BR"
-                  />
-                ) : (
+                {/* Renderização condicional baseada no método */}
+                {mpInitialized && paymentMethod === 'credit_card' ? (
+                  <div className="mt-6">
+                    <CardPayment
+                      initialization={{ amount: total }}
+                      onSubmit={handleCardPaymentSubmit}
+                      locale="pt-BR"
+                    />
+                  </div>
+                ) : paymentMethod === 'pix' ? (
                   <div className="text-center py-8">
-                    <p className="text-white/60 mb-4">Pagamentos serão processados após a confirmação</p>
+                    <QrCode className="w-16 h-16 mx-auto mb-4 text-primary" />
+                    <p className="text-white/80 mb-6">
+                      Após confirmar, você receberá um QR Code PIX para realizar o pagamento
+                    </p>
                     <Button
-                      onClick={() => handlePaymentSubmit({ token: 'mock_token', installments: 1, payment_method_id: 'mock' })}
+                      onClick={handleAlternativePayment}
                       disabled={processing}
                       className="bg-primary hover:bg-primary/90 text-white rounded-full px-8 py-4"
                     >
-                      {processing ? <>Processando...</> : 'Confirmar Pedido'}
+                      {processing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Gerando PIX...
+                        </>
+                      ) : (
+                        'Gerar QR Code PIX'
+                      )}
                     </Button>
+                  </div>
+                ) : paymentMethod === 'boleto' ? (
+                  <div className="text-center py-8">
+                    <Receipt className="w-16 h-16 mx-auto mb-4 text-primary" />
+                    <p className="text-white/80 mb-6">
+                      Após confirmar, você receberá o boleto para pagamento
+                    </p>
+                    <Button
+                      onClick={handleAlternativePayment}
+                      disabled={processing}
+                      className="bg-primary hover:bg-primary/90 text-white rounded-full px-8 py-4"
+                    >
+                      {processing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Gerando Boleto...
+                        </>
+                      ) : (
+                        'Gerar Boleto'
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-white/60">Carregando método de pagamento...</p>
                   </div>
                 )}
               </Card>
@@ -224,8 +444,8 @@ export default function CheckoutPage() {
                 <div className="space-y-4 mb-6">
                   {cartItemsWithDetails.map((item) => (
                     <div key={item.productId} className="flex justify-between text-white/80">
-                      <span>{item.product.name} x{item.quantity}</span>
-                      <span>{formatPrice(item.product.price * item.quantity)}</span>
+                      <span className="flex-1">{item.product.name} x{item.quantity}</span>
+                      <span className="font-semibold">{formatPrice(item.product.price * item.quantity)}</span>
                     </div>
                   ))}
                 </div>
@@ -259,14 +479,21 @@ export default function CheckoutPage() {
                       className="bg-black/50 border-white/10 text-white h-12"
                       disabled={!!appliedCoupon}
                     />
-                    <Button onClick={handleApplyCoupon} disabled={couponLoading || !!appliedCoupon} variant="outline" className="border-white/20 hover:bg-white/10">
+                    <Button 
+                      onClick={handleApplyCoupon} 
+                      disabled={couponLoading || !!appliedCoupon} 
+                      variant="outline" 
+                      className="border-white/20 hover:bg-white/10 h-12 px-4"
+                    >
                       {couponLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Tag className="w-4 h-4" />}
                     </Button>
                   </div>
-                  {appliedCoupon && <p className="text-secondary text-sm">✓ Cupom aplicado: {(appliedCoupon.discount * 100).toFixed(0)}% de desconto</p>}
+                  {appliedCoupon && (
+                    <p className="text-secondary text-sm">✓ Cupom aplicado: {(appliedCoupon.discount * 100).toFixed(0)}% de desconto</p>
+                  )}
                 </div>
                 <div className="mt-6 p-4 bg-white/5 rounded-xl border border-white/5">
-                  <p className="text-white/60 text-sm">🔒 Pagamento seguro processado via Mercado Pago</p>
+                  <p className="text-white/60 text-sm text-center">🔒 Pagamento seguro processado via Mercado Pago</p>
                 </div>
               </Card>
             </div>
