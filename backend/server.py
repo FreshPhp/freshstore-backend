@@ -397,7 +397,7 @@ async def root():
 
 @app.get("/bia")
 async def bia():
-    return {"status": "Eu te amo ❤️", "service": "StreamShop API"}
+    return {"status": "Eu te amoo ❤️", "service": "StreamShop API"}
 
 @api_router.get("/health")
 async def health():
