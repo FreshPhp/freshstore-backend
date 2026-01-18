@@ -73,7 +73,7 @@ products = [
     },
     {
         "id": str(uuid.uuid4()),
-        "name": "YouTube Premium",
+        "name": "YouTube tPremium",
         "description": "YouTube sem anúncios e música incluída",
         "platform": "YouTube",
         "price": 1,
