@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -21,7 +21,8 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [mpInitialized, setMpInitialized] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState('credit_card'); // 'credit_card', 'pix', 'boleto'
+  const [paymentMethod, setPaymentMethod] = useState('credit_card');
+  const mpInitRef = useRef(false); // CORREÇÃO: evita dupla inicialização
 
   const [customerInfo, setCustomerInfo] = useState({
     email: user?.email || '',
@@ -53,12 +54,28 @@ export default function CheckoutPage() {
 
       setProductsData(productsRes.data);
 
-      if (configRes.data.publicKey) {
-        initMercadoPago(configRes.data.publicKey, { locale: 'pt-BR' });
-        setMpInitialized(true);
+      // CORREÇÃO: log para debug + proteção contra dupla inicialização
+      const publicKey = configRes.data.publicKey;
+      console.log('MP PUBLIC KEY recebida:', publicKey ? publicKey.substring(0, 20) + '...' : 'UNDEFINED');
+
+      if (publicKey && !mpInitRef.current) {
+        try {
+          initMercadoPago(publicKey, { locale: 'pt-BR' });
+          mpInitRef.current = true;
+          setMpInitialized(true);
+          console.log('✅ MercadoPago inicializado com sucesso');
+        } catch (initError) {
+          // SDK já foi inicializado em outra renderização, apenas marca como pronto
+          console.warn('MP já inicializado:', initError.message);
+          mpInitRef.current = true;
+          setMpInitialized(true);
+        }
+      } else if (!publicKey) {
+        console.error('❌ PUBLIC KEY não retornada pelo backend. Verifique MERCADOPAGO_PUBLIC_KEY no .env');
+        toast.error('Erro de configuração do pagamento. Contate o suporte.');
       }
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar produtos ou configuração de pagamento');
     } finally {
       setLoading(false);
@@ -99,12 +116,25 @@ export default function CheckoutPage() {
       toast.error('Por favor, preencha todos os campos obrigatórios');
       return false;
     }
-    
+
+    if (!customerInfo.phone) {
+      toast.error('Telefone é obrigatório');
+      return false;
+    }
+
     if ((paymentMethod === 'pix' || paymentMethod === 'boleto') && !customerInfo.documentNumber) {
       toast.error('CPF/CNPJ é obrigatório para PIX e Boleto');
       return false;
     }
-    
+
+    // CORREÇÃO: validar valor mínimo por método
+    const minAmounts = { pix: 0.50, boleto: 5.00, credit_card: 0.50 };
+    const minVal = minAmounts[paymentMethod] || 0.50;
+    if (total < minVal) {
+      toast.error(`Valor mínimo para ${paymentMethod === 'credit_card' ? 'cartão' : paymentMethod.toUpperCase()} é R$ ${minVal.toFixed(2)}`);
+      return false;
+    }
+
     return true;
   };
 
@@ -135,7 +165,7 @@ export default function CheckoutPage() {
           identification: {
             type: customerInfo.documentType,
             number: customerInfo.documentNumber,
-          }
+          },
         },
         items: orderItems,
         subtotal,
@@ -179,9 +209,9 @@ export default function CheckoutPage() {
         customerInfo: {
           ...customerInfo,
           identification: {
-            type: customerInfo.documentType,
+            type: customerInfo.documentType || 'CPF',
             number: customerInfo.documentNumber,
-          }
+          },
         },
         items: orderItems,
         subtotal,
@@ -207,10 +237,7 @@ export default function CheckoutPage() {
     if (responseData.status === 'approved') {
       await clearCart();
       navigate(`/payment-success?orderId=${responseData.orderId}`);
-    } else if (responseData.status === 'pending') {
-      await clearCart();
-      navigate(`/payment-pending?orderId=${responseData.orderId}&method=${paymentMethod}`);
-    } else if (responseData.status === 'in_process') {
+    } else if (responseData.status === 'pending' || responseData.status === 'in_process') {
       await clearCart();
       navigate(`/payment-pending?orderId=${responseData.orderId}&method=${paymentMethod}`);
     } else {
@@ -351,7 +378,7 @@ export default function CheckoutPage() {
               {/* Payment Method Selection */}
               <Card className="glass p-8 rounded-2xl border border-white/10">
                 <h2 className="text-2xl font-heading font-bold text-white mb-6">Método de Pagamento</h2>
-                
+
                 <div className="grid grid-cols-3 gap-4 mb-6">
                   {paymentMethods.map((method) => {
                     const Icon = method.icon;
@@ -378,14 +405,46 @@ export default function CheckoutPage() {
                   })}
                 </div>
 
-                {/* Renderização condicional baseada no método */}
-                {mpInitialized && paymentMethod === 'credit_card' ? (
+                {/* CORREÇÃO: CardPayment com initialization e customization corretos */}
+                {paymentMethod === 'credit_card' ? (
                   <div className="mt-6">
-                    <CardPayment
-                      initialization={{ amount: total }}
-                      onSubmit={handleCardPaymentSubmit}
-                      locale="pt-BR"
-                    />
+                    {mpInitialized ? (
+                      <>
+                        <CardPayment
+                          initialization={{
+                            amount: total,
+                            payer: {
+                              email: customerInfo.email,
+                            },
+                          }}
+                          customization={{
+                            paymentMethods: {
+                              minInstallments: 1,
+                              maxInstallments: 12,
+                            },
+                          }}
+                          onSubmit={handleCardPaymentSubmit}
+                          onError={(error) => {
+                            console.error('CardPayment error:', error);
+                            toast.error('Erro no formulário de cartão. Verifique os dados.');
+                          }}
+                        />
+                        {processing && (
+                          <div className="flex items-center justify-center mt-4 gap-2 text-white/60">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Processando pagamento...</span>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center py-8">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-white/40" />
+                        <p className="text-white/60 text-sm">Carregando formulário de cartão...</p>
+                        <p className="text-white/40 text-xs mt-2">
+                          Se demorar, desative extensões de bloqueio de anúncios e recarregue a página
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : paymentMethod === 'pix' ? (
                   <div className="text-center py-8">
@@ -429,11 +488,7 @@ export default function CheckoutPage() {
                       )}
                     </Button>
                   </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-white/60">Carregando método de pagamento...</p>
-                  </div>
-                )}
+                ) : null}
               </Card>
             </div>
 
@@ -479,10 +534,10 @@ export default function CheckoutPage() {
                       className="bg-black/50 border-white/10 text-white h-12"
                       disabled={!!appliedCoupon}
                     />
-                    <Button 
-                      onClick={handleApplyCoupon} 
-                      disabled={couponLoading || !!appliedCoupon} 
-                      variant="outline" 
+                    <Button
+                      onClick={handleApplyCoupon}
+                      disabled={couponLoading || !!appliedCoupon}
+                      variant="outline"
                       className="border-white/20 hover:bg-white/10 h-12 px-4"
                     >
                       {couponLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Tag className="w-4 h-4" />}

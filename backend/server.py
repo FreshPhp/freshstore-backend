@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from passlib.context import CryptContext
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env') #load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / '.env')
 
 # Config
 mongo_url = os.environ['MONGO_URL']
@@ -29,18 +29,27 @@ JWT_SECRET = os.getenv("JWT_SECRET")
 JWT_ALGORITHM = "HS256"
 
 if not MERCADOPAGO_ACCESS_TOKEN:
-    raise RuntimeError("❌ MERCADOPAGO_ACCESS_TOKEN NÃO DEFINIDO")
+    raise RuntimeError("MERCADOPAGO_ACCESS_TOKEN NÃO DEFINIDO")
 
+if not MERCADOPAGO_PUBLIC_KEY:
+    raise RuntimeError("MERCADOPAGO_PUBLIC_KEY NÃO DEFINIDO")
 
 print("🔑 MP ACCESS TOKEN:", MERCADOPAGO_ACCESS_TOKEN[:10] if MERCADOPAGO_ACCESS_TOKEN else None)
 print("🔑 MP PUBLIC KEY:", MERCADOPAGO_PUBLIC_KEY[:10] if MERCADOPAGO_PUBLIC_KEY else None)
 
-mp = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN) 
+mp = mercadopago.SDK(MERCADOPAGO_ACCESS_TOKEN)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ========== VALORES MÍNIMOS POR MÉTODO ==========
+MIN_AMOUNTS = {
+    "pix": 0.50,
+    "boleto": 5.00,
+    "credit_card": 0.50,
+}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -265,73 +274,188 @@ async def get_order(order_id: str):
 @api_router.post("/payments/process", response_model=PaymentResponse)
 async def process_payment(req: PaymentRequest):
     try:
-        logger.info(f"💳 Processing {req.paymentMethod} payment for {req.customerInfo.email}")
+        logger.info(f"💳 Processando {req.paymentMethod} para {req.customerInfo.email} | Total: R$ {req.total:.2f}")
         order_id = str(uuid.uuid4())
-        
-        if req.paymentMethod in ["pix", "boleto"]:
-            doc = req.customerInfo.identification.number if req.customerInfo.identification else req.customerInfo.documentNumber
-            if not doc:
-                raise HTTPException(400, "CPF/CNPJ obrigatório para PIX/Boleto")
-        
-        if not mp:
-            logger.warning("⚠️  MP not configured - MOCK MODE")
-            await db.orders.insert_one({"id": order_id, "userId": req.userId, "sessionId": req.sessionId, "items": [i.model_dump() for i in req.items], "subtotal": req.subtotal, "discount": req.discount, "total": req.total, "customer": req.customerInfo.model_dump(), "paymentMethod": req.paymentMethod, "mercadopagoPaymentId": "mock", "mercadopagoStatus": "approved", "status": "approved", "createdAt": datetime.now(timezone.utc).isoformat(), "updatedAt": datetime.now(timezone.utc).isoformat()})
-            return PaymentResponse(status="approved", orderId=order_id, paymentId="mock", paymentMethod=req.paymentMethod, message="Mock payment")
-        
-        payer = {"email": req.customerInfo.email, "first_name": req.customerInfo.firstName, "last_name": req.customerInfo.lastName}
-        if req.customerInfo.identification:
-            payer["identification"] = {"type": req.customerInfo.identification.type, "number": req.customerInfo.identification.number}
+
+        # CORREÇÃO: validar valor mínimo por método de pagamento
+        min_val = MIN_AMOUNTS.get(req.paymentMethod, 0.50)
+        if req.total < min_val:
+            raise HTTPException(
+                400,
+                f"Valor mínimo para {req.paymentMethod} é R$ {min_val:.2f}. Valor atual: R$ {req.total:.2f}"
+            )
+
+        # CORREÇÃO: obter documento de identificação de forma unificada
+        doc_number = ""
+        doc_type = "CPF"
+        if req.customerInfo.identification and req.customerInfo.identification.number:
+            doc_number = req.customerInfo.identification.number
+            doc_type = req.customerInfo.identification.type or "CPF"
         elif req.customerInfo.documentNumber:
-            payer["identification"] = {"type": req.customerInfo.documentType or "CPF", "number": req.customerInfo.documentNumber}
-        
+            doc_number = req.customerInfo.documentNumber
+            doc_type = req.customerInfo.documentType or "CPF"
+
+        # Validar CPF para PIX e Boleto
+        if req.paymentMethod in ["pix", "boleto"]:
+            if not doc_number:
+                raise HTTPException(400, "CPF/CNPJ obrigatório para PIX e Boleto")
+            logger.info(f"📄 Documento: {doc_type} {doc_number[:3]}***")
+
+        # Montar payer base
+        payer = {
+            "email": req.customerInfo.email,
+            "first_name": req.customerInfo.firstName,
+            "last_name": req.customerInfo.lastName,
+        }
+        if doc_number:
+            payer["identification"] = {"type": doc_type, "number": doc_number}
+
+        # ---- CARTÃO DE CRÉDITO ----
         if req.paymentMethod == "credit_card":
             if not req.paymentData.token:
-                raise HTTPException(400, "Token obrigatório")
-            body = {"transaction_amount": float(req.total), "token": req.paymentData.token, "description": f"Order {order_id[:8]}", "payment_method_id": req.paymentData.paymentMethodId, "installments": req.paymentData.installments, "payer": {**payer, "phone": {"area_code": "00", "number": req.customerInfo.phone}, "address": {"street_name": req.customerInfo.address, "street_number": "1", "zip_code": req.customerInfo.postalCode}}, "external_reference": order_id, "statement_descriptor": "STREAMSHOP"}
+                raise HTTPException(400, "Token do cartão é obrigatório")
+
+            body = {
+                "transaction_amount": float(req.total),
+                "token": req.paymentData.token,
+                "description": f"Order {order_id[:8]}",
+                "payment_method_id": req.paymentData.paymentMethodId,
+                "installments": req.paymentData.installments,
+                "payer": {
+                    **payer,
+                    "phone": {"area_code": "00", "number": req.customerInfo.phone},
+                    "address": {
+                        "street_name": req.customerInfo.address or "Rua Sem Nome",
+                        "street_number": "1",
+                        "zip_code": req.customerInfo.postalCode or "01310100",
+                    },
+                },
+                "external_reference": order_id,
+                "statement_descriptor": "STREAMSHOP",
+            }
             if req.paymentData.issuerId:
                 body["issuer_id"] = req.paymentData.issuerId
+
+        # ---- PIX ----
         elif req.paymentMethod == "pix":
-            body = {"transaction_amount": float(req.total), "description": f"Order {order_id[:8]}", "payment_method_id": "pix", "payer": payer, "external_reference": order_id}
+            body = {
+                "transaction_amount": float(req.total),
+                "description": f"Order {order_id[:8]}",
+                "payment_method_id": "pix",
+                "payer": payer,
+                "external_reference": order_id,
+            }
+
+        # ---- BOLETO ----
         elif req.paymentMethod == "boleto":
-            body = {"transaction_amount": float(req.total), "description": f"Order {order_id[:8]}", "payment_method_id": "bolbradesco", "payer": {**payer, "address": {"street_name": req.customerInfo.address, "street_number": "1", "city": req.customerInfo.city, "federal_unit": "SP", "zip_code": req.customerInfo.postalCode}}, "external_reference": order_id}
+            # CORREÇÃO: boleto exige endereço e identificação completos
+            body = {
+                "transaction_amount": float(req.total),
+                "description": f"Order {order_id[:8]}",
+                "payment_method_id": "bolbradesco",
+                "payer": {
+                    **payer,
+                    "address": {
+                        "street_name": req.customerInfo.address or "Rua Sem Nome",
+                        "street_number": "1",
+                        "city": req.customerInfo.city or "São Paulo",
+                        "federal_unit": "SP",
+                        "zip_code": req.customerInfo.postalCode or "01310100",
+                    },
+                },
+                "external_reference": order_id,
+            }
+
         else:
-            raise HTTPException(400, f"Método '{req.paymentMethod}' não suportado")
-        
-        logger.info(f"📤 Sending to MP: {json.dumps(body, indent=2)}")
+            raise HTTPException(400, f"Método de pagamento '{req.paymentMethod}' não suportado")
+
+        logger.info(f"📤 Enviando para o MercadoPago:\n{json.dumps(body, indent=2, ensure_ascii=False)}")
         res = mp.payment().create(body)
-        logger.info(f"📥 MP Status: {res['status']}")
-        
+        logger.info(f"📥 MP Status HTTP: {res['status']}")
+        logger.info(f"📥 MP Response:\n{json.dumps(res.get('response', {}), indent=2, ensure_ascii=False)}")
+
+        # CORREÇÃO: log detalhado do erro para facilitar debug
         if res["status"] not in [200, 201]:
-            raise HTTPException(400, f"MP Error: {res.get('response', {}).get('message', 'Unknown')}")
-        
+            mp_response = res.get("response", {})
+            error_msg = mp_response.get("message", "Erro desconhecido do MercadoPago")
+            cause = mp_response.get("cause", [])
+            logger.error(f"❌ MP rejeitou pagamento: {error_msg} | Cause: {cause}")
+            raise HTTPException(400, f"Erro MercadoPago: {error_msg}")
+
         pay = res["response"]
-        doc = {"id": order_id, "userId": req.userId, "sessionId": req.sessionId, "items": [i.model_dump() for i in req.items], "subtotal": req.subtotal, "discount": req.discount, "total": req.total, "customer": req.customerInfo.model_dump(), "paymentMethod": req.paymentMethod, "mercadopagoPaymentId": pay.get("id"), "mercadopagoStatus": pay.get("status"), "status": "approved" if pay.get("status") == "approved" else "pending" if pay.get("status") in ["pending", "in_process"] else "failed", "createdAt": datetime.now(timezone.utc).isoformat(), "updatedAt": datetime.now(timezone.utc).isoformat()}
-        
+        pay_status = pay.get("status", "failed")
+
+        # Montar documento do pedido no banco
+        order_doc = {
+            "id": order_id,
+            "userId": req.userId,
+            "sessionId": req.sessionId,
+            "items": [i.model_dump() for i in req.items],
+            "subtotal": req.subtotal,
+            "discount": req.discount,
+            "total": req.total,
+            "customer": req.customerInfo.model_dump(),
+            "paymentMethod": req.paymentMethod,
+            "mercadopagoPaymentId": pay.get("id"),
+            "mercadopagoStatus": pay_status,
+            "status": "approved" if pay_status == "approved" else "pending" if pay_status in ["pending", "in_process"] else "failed",
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Dados do PIX
         pix_data = None
         if req.paymentMethod == "pix" and pay.get("point_of_interaction"):
             td = pay["point_of_interaction"].get("transaction_data", {})
-            if td.get("qr_code"):
-                doc["pixQrCode"] = td["qr_code"]
-                doc["pixQrCodeBase64"] = td.get("qr_code_base64")
-                pix_data = PixData(qrCode=td["qr_code"], qrCodeBase64=td.get("qr_code_base64", ""), expirationDate=pay.get("date_of_expiration"))
-        
+            qr_code = td.get("qr_code")
+            if qr_code:
+                order_doc["pixQrCode"] = qr_code
+                order_doc["pixQrCodeBase64"] = td.get("qr_code_base64", "")
+                pix_data = PixData(
+                    qrCode=qr_code,
+                    qrCodeBase64=td.get("qr_code_base64", ""),
+                    expirationDate=pay.get("date_of_expiration"),
+                )
+                logger.info("✅ PIX QR Code gerado com sucesso")
+            else:
+                logger.warning("⚠️ PIX aprovado mas sem QR Code na resposta")
+
+        # Dados do Boleto
         boleto_data = None
         if req.paymentMethod == "boleto" and pay.get("transaction_details"):
             td = pay["transaction_details"]
-            if td.get("external_resource_url"):
-                doc["boletoUrl"] = td["external_resource_url"]
-                doc["boletoBarcode"] = td.get("digitable_line")
-                boleto_data = BoletoData(boletoUrl=td["external_resource_url"], barcode=td.get("digitable_line", ""), expirationDate=pay.get("date_of_expiration"))
-        
-        await db.orders.insert_one(doc)
-        logger.info(f"✅ Order {order_id} created")
-        
-        return PaymentResponse(status="approved" if pay.get("status") == "approved" else "pending" if pay.get("status") in ["pending", "in_process"] else "failed", orderId=order_id, paymentId=pay.get("id"), paymentMethod=req.paymentMethod, message=f"Payment {pay.get('status')}", pix=pix_data, boleto=boleto_data)
+            boleto_url = td.get("external_resource_url")
+            if boleto_url:
+                order_doc["boletoUrl"] = boleto_url
+                order_doc["boletoBarcode"] = td.get("digitable_line", "")
+                boleto_data = BoletoData(
+                    boletoUrl=boleto_url,
+                    barcode=td.get("digitable_line", ""),
+                    expirationDate=pay.get("date_of_expiration"),
+                )
+                logger.info("✅ Boleto gerado com sucesso")
+            else:
+                logger.warning("⚠️ Boleto criado mas sem URL na resposta")
+
+        await db.orders.insert_one(order_doc)
+        logger.info(f"✅ Pedido {order_id} salvo no banco | Status: {order_doc['status']}")
+
+        return PaymentResponse(
+            status=order_doc["status"],
+            orderId=order_id,
+            paymentId=str(pay.get("id")),
+            paymentMethod=req.paymentMethod,
+            message=f"Pagamento {pay_status}",
+            pix=pix_data,
+            boleto=boleto_data,
+        )
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Payment error: {str(e)}", exc_info=True)
-        raise HTTPException(500, f"Payment failed: {str(e)}")
+        logger.error(f"❌ Erro inesperado no pagamento: {str(e)}", exc_info=True)
+        raise HTTPException(500, f"Erro interno ao processar pagamento: {str(e)}")
+
 
 @api_router.get("/payments/config")
 async def get_config():
@@ -339,13 +463,15 @@ async def get_config():
 
 @api_router.get("/payments/status/{payment_id}")
 async def get_status(payment_id: str):
-    if not mp:
-        raise HTTPException(503, "Payment service not configured")
     res = mp.payment().get(payment_id)
     if res["status"] != 200:
         raise HTTPException(404, "Payment not found")
     p = res["response"]
-    return {"status": p.get("status"), "statusDetail": p.get("status_detail"), "paymentMethod": p.get("payment_method_id")}
+    return {
+        "status": p.get("status"),
+        "statusDetail": p.get("status_detail"),
+        "paymentMethod": p.get("payment_method_id"),
+    }
 
 @api_router.get("/payments/order/{order_id}")
 async def get_payment_by_order(order_id: str):
@@ -354,9 +480,17 @@ async def get_payment_by_order(order_id: str):
         raise HTTPException(404, "Order not found")
     resp = {"success": True, "order": order}
     if order.get("paymentMethod") == "pix" and order.get("pixQrCode"):
-        resp["order"]["pix"] = {"qrCode": order["pixQrCode"], "qrCodeBase64": order.get("pixQrCodeBase64"), "expirationDate": None}
+        resp["order"]["pix"] = {
+            "qrCode": order["pixQrCode"],
+            "qrCodeBase64": order.get("pixQrCodeBase64"),
+            "expirationDate": None,
+        }
     if order.get("paymentMethod") == "boleto" and order.get("boletoUrl"):
-        resp["order"]["boleto"] = {"boletoUrl": order["boletoUrl"], "barcode": order.get("boletoBarcode"), "expirationDate": None}
+        resp["order"]["boleto"] = {
+            "boletoUrl": order["boletoUrl"],
+            "barcode": order.get("boletoBarcode"),
+            "expirationDate": None,
+        }
     return resp
 
 # ========== WEBHOOK ==========
@@ -372,30 +506,39 @@ async def webhook(req: Request, bg: BackgroundTasks):
         return {"status": "error"}
 
 async def update_status(pid: str):
-    if not mp:
-        return
     try:
         res = mp.payment().get(pid)
         if res["status"] == 200:
             p = res["response"]
-            await db.orders.update_one({"id": p.get("external_reference")}, {"$set": {"mercadopagoStatus": p.get("status"), "status": "approved" if p.get("status") == "approved" else "pending" if p.get("status") in ["pending", "in_process"] else "failed", "updatedAt": datetime.now(timezone.utc).isoformat()}})
-            logger.info(f"Order {p.get('external_reference')} updated")
+            new_status = "approved" if p.get("status") == "approved" else "pending" if p.get("status") in ["pending", "in_process"] else "failed"
+            await db.orders.update_one(
+                {"id": p.get("external_reference")},
+                {"$set": {
+                    "mercadopagoStatus": p.get("status"),
+                    "status": new_status,
+                    "updatedAt": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            logger.info(f"Pedido {p.get('external_reference')} atualizado para {new_status}")
     except Exception as e:
-        logger.error(f"Update error: {str(e)}")
+        logger.error(f"Erro ao atualizar status: {str(e)}")
 
 # ========== SEED ==========
 @api_router.post("/seed")
 async def seed():
     if await db.products.find_one({}):
         return {"message": "Already seeded"}
-    products = [
-        {"id": str(uuid.uuid4()), "name": "Netflix ttPremium", "description": "4 telas em Ultra HD", "platform": "Netflix", "price": 1, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1637363990764-de84fd247b7d?w=800", "features": ["4 telas", "Ultra HD", "Download", "Catálogo completo"], "isAvailable": True},
+    seed_products = [
+        {"id": str(uuid.uuid4()), "name": "Netflix Premium", "description": "4 telas em Ultra HD", "platform": "Netflix", "price": 29.90, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1637363990764-de84fd247b7d?w=800", "features": ["4 telas", "Ultra HD", "Download", "Catálogo completo"], "isAvailable": True},
         {"id": str(uuid.uuid4()), "name": "Spotify Premium", "description": "Música sem anúncios", "platform": "Spotify", "price": 19.90, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1706879350865-e1cdb3792b22?w=800", "features": ["Sem anúncios", "Offline", "Alta qualidade"], "isAvailable": True},
-        {"id": str(uuid.uuid4()), "name": "Disney+", "description": "Disney, Pixar, Marvel, Star Wars", "platform": "Disney+", "price": 27.90, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1662338571360-e20bfb6f2545?w=800", "features": ["4K", "4 dispositivos", "Download"], "isAvailable": True}
+        {"id": str(uuid.uuid4()), "name": "Disney+", "description": "Disney, Pixar, Marvel, Star Wars", "platform": "Disney+", "price": 27.90, "duration": "1 mês", "image": "https://images.unsplash.com/photo-1662338571360-e20bfb6f2545?w=800", "features": ["4K", "4 dispositivos", "Download"], "isAvailable": True},
     ]
-    await db.products.insert_many(products)
-    await db.coupons.insert_many([{"code": "BEMVINDO10", "discount": 0.10, "isActive": True}, {"code": "STREAM20", "discount": 0.20, "isActive": True}])
-    return {"message": "Seeded", "products": len(products)}
+    await db.products.insert_many(seed_products)
+    await db.coupons.insert_many([
+        {"code": "BEMVINDO10", "discount": 0.10, "isActive": True},
+        {"code": "STREAM20", "discount": 0.20, "isActive": True},
+    ])
+    return {"message": "Seeded", "products": len(seed_products)}
 
 # ========== HEALTH ==========
 @app.get("/")
@@ -411,7 +554,13 @@ async def health():
     return {"status": "healthy"}
 
 app.include_router(api_router)
-app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','), allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=int(os.environ.get("PORT", 10000)), reload=False)

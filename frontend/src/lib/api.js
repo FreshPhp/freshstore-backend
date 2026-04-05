@@ -10,7 +10,7 @@ const api = axios.create({
   },
   timeout: 30000, // 30 segundos de timeout
 });
-console.log("MP TOKEN:", process.env.MERCADOPAGO_ACCESS_TOKEN?.slice(0, 10));
+
 
 
 // Add auth token to requests
